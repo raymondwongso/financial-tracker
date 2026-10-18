@@ -32,7 +32,8 @@ const BASH_RULES = [
   [/\bmkfs\b|\bdd\s+if=|>\s*\/dev\/sd/, 'disk-level commands are not allowed'],
   [/\b(npm|pnpm)\s+publish\b/, 'publishing packages is not allowed'],
   [
-    /(^|[\s;&|])(cat|less|more|head|tail|bat|source|\.)\s+[^|;&]*\.env(\.(?!example)[\w.-]+)?(\s|$)/,
+    // Same line only, and not `cat > file` (a write, e.g. a heredoc that mentions ../.env).
+    /(^|[\s;&|])(cat|less|more|head|tail|bat|source|\.)\s+(?!>)[^|;&\n>]*\.env(\.(?!example)[\w.-]+)?(\s|$)/m,
     'reading .env files is not allowed (secrets)',
   ],
 ];
