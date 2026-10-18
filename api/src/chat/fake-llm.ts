@@ -18,7 +18,7 @@ export class FakeLlm implements LlmClient {
       );
       const failed = results.find((r) => r.is_error);
       if (failed) return text(`Sorry, that did not work: ${resultText(failed)}`);
-      return text(`Done. ${results.map(resultText).join(' ')}`);
+      return text(results.map((r) => describe(resultText(r))).join(' '));
     }
 
     const prompt = typeof last.content === 'string' ? last.content : '';
@@ -75,6 +75,30 @@ function parseIntent(prompt: string): { name: string; input: Record<string, unkn
   if (/transactions/i.test(p)) return { name: 'list_transactions', input: {} };
   if (/accounts/i.test(p)) return { name: 'list_accounts', input: {} };
   return undefined;
+}
+
+/** Turns a tool's JSON result into a one-line human reply. */
+function describe(raw: string): string {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+  if (Array.isArray(data)) return `Found ${data.length} item${data.length === 1 ? '' : 's'}.`;
+  const d = data as Record<string, unknown>;
+  if (typeof d.amount === 'string' && typeof d.account === 'string') {
+    return `Recorded ${d.type} of ${d.amount} for ${d.category} on ${d.account}.`;
+  }
+  if (typeof d.name === 'string' && typeof d.currency === 'string') {
+    return `Created ${String(d.type).replace('_', ' ')} account "${d.name}" (${d.currency}).`;
+  }
+  if (Array.isArray(d.totals)) {
+    const totals = d.totals as Array<Record<string, string>>;
+    if (totals.length === 0) return `No transactions in ${d.month}.`;
+    return `In ${d.month}: ${totals.map((t) => `income ${t.income}, expenses ${t.expense}, net ${t.net}`).join('; ')}.`;
+  }
+  return 'Done.';
 }
 
 function resultText(block: Anthropic.ToolResultBlockParam): string {
