@@ -12,8 +12,10 @@ import type pg from 'pg';
 import type { Config } from './config';
 import { auth } from './plugins/auth';
 import { registerErrorHandler } from './plugins/error-handler';
+import { accountRoutes } from './routes/accounts';
 import { authRoutes } from './routes/auth';
 import { healthRoutes } from './routes/health';
+import { transactionRoutes } from './routes/transactions';
 import type { App } from './types';
 
 declare module 'fastify' {
@@ -45,6 +47,8 @@ export async function buildApp(config: Config): Promise<App> {
 
   await app.register(healthRoutes);
   await app.register(authRoutes, { prefix: '/auth', rateLimit: config.AUTH_RATE_LIMIT });
+  await app.register(accountRoutes, { prefix: '/accounts' });
+  await app.register(transactionRoutes, { prefix: '/transactions' });
 
   return app;
 }
