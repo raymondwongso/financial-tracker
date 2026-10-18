@@ -15,6 +15,22 @@ describe('money helpers', () => {
     expect(fractionDigits('JPY')).toBe(0);
   });
 
+  it('uses a fixed minor-unit table, not runtime Intl data', () => {
+    expect(fractionDigits('IDR')).toBe(0);
+    expect(fractionDigits('idr')).toBe(0);
+    expect(fractionDigits('KWD')).toBe(3);
+    expect(fractionDigits('EUR')).toBe(2);
+    expect(fractionDigits('XYZ')).toBe(2);
+  });
+
+  it('round-trips rupiah amounts without scaling (regression: 50,000 IDR shown as Rp 500.00)', () => {
+    const plain = (s: string) => s.replace(/\u00a0/g, ' ');
+    expect(toMinor(50000, 'IDR')).toBe(50000);
+    expect(toMajor(50000, 'IDR')).toBe(50000);
+    expect(plain(formatMoney(50000, 'IDR'))).toBe('Rp 50,000');
+    expect(plain(formatMoney(1234, 'KWD'))).toBe('KWD 1.234');
+  });
+
   it('converts major to minor units without float drift', () => {
     expect(toMinor(12.5, 'USD')).toBe(1250);
     expect(toMinor(0.1 + 0.2, 'USD')).toBe(30);

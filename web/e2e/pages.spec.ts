@@ -52,6 +52,30 @@ test.describe('dashboard, accounts and transactions', () => {
     await expect(page.getByTestId('account-balance')).toHaveText('€974.50');
   });
 
+  test('stores and shows rupiah amounts consistently from the form and the chat', async ({
+    page,
+  }) => {
+    await sendChat(page, 'Create a bank account called BCA in IDR');
+    await sendChat(page, 'got paid 50000 into BCA');
+    await expect(
+      page
+        .getByTestId('assistant-message')
+        .last()
+        .getByRole('button', { name: /\+Rp\s50,000/ }),
+    ).toBeVisible();
+
+    await page.goto('/accounts');
+    await page.getByTestId('account-card').filter({ hasText: 'BCA' }).click();
+    await page.getByLabel('Amount (IDR)').fill('50000');
+    await page.getByLabel('Category').fill('Salary');
+    await page.getByRole('group', { name: 'Transaction type' }).getByText('Income').click();
+    await page.getByRole('button', { name: 'Save transaction' }).click();
+    await expect(
+      page.getByRole('row', { name: /Salary.*\+Rp\s50,000.*Rp\s100,000/ }),
+    ).toBeVisible();
+    await expect(page.getByTestId('account-balance')).toHaveText(/^Rp\s100,000$/);
+  });
+
   test('rejects a zero amount', async ({ page }) => {
     await sendChat(page, 'Create a cash account called Wallet in USD');
     await page.goto('/transactions');
