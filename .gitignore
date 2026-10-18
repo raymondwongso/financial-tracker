@@ -14,4 +14,4 @@ test-results/
 .design-scratch/
 web/next-env.d.ts
 web/.shots/
-web/.next-e2e/
+web/.next-*/
