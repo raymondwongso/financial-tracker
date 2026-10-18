@@ -1,1 +1,96 @@
-// TODO: defines postgres, api, web container spec
+# Local development environment.
+#   make run-database   -> only postgres (dev + test databases)
+#   make up             -> full stack (postgres, mcp, api, web) built from the Dockerfiles
+name: financial-tracker
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tracker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tracker}
+      POSTGRES_DB: ${POSTGRES_DB:-financial_tracker}
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    profiles: [app]
+    build: { context: ., dockerfile: api/Dockerfile }
+    image: financial-tracker-api
+    command: ['node', 'dist/db/migrate.js']
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-tracker}:${POSTGRES_PASSWORD:-tracker}@postgres:5432/${POSTGRES_DB:-financial_tracker}
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  mcp:
+    profiles: [app]
+    build: { context: ., dockerfile: mcp/Dockerfile }
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-tracker}:${POSTGRES_PASSWORD:-tracker}@postgres:5432/${POSTGRES_DB:-financial_tracker}
+      MCP_INTERNAL_SECRET: ${MCP_INTERNAL_SECRET:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    # Internal only: reachable by the api container, not published to the host.
+    expose: ['4100']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:4100/health']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    profiles: [app]
+    image: financial-tracker-api
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-tracker}:${POSTGRES_PASSWORD:-tracker}@postgres:5432/${POSTGRES_DB:-financial_tracker}
+      JWT_SECRET: ${JWT_SECRET:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      MCP_URL: http://mcp:4100/mcp
+      MCP_INTERNAL_SECRET: ${MCP_INTERNAL_SECRET:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      LLM_MODEL: ${LLM_MODEL:-claude-haiku-5-5}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - '4000:4000'
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      mcp: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:4000/health']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    profiles: [app]
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        API_INTERNAL_URL: http://api:4000
+    environment:
+      API_INTERNAL_URL: http://api:4000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - '3000:3000'
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/health']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:

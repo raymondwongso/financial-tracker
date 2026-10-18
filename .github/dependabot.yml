@@ -1,0 +1,32 @@
+version: 2
+updates:
+  - package-ecosystem: npm # pnpm workspaces via pnpm-lock.yaml
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chores'
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'chores'
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: docker
+    directories: [/api, /mcp, /web]
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'chores'
+    groups:
+      docker-images:
+        patterns: ['*']

@@ -1,0 +1,11 @@
+packages:
+  - api
+  - web
+  - shared
+  - mcp
+
+# Packages allowed to run install scripts (pnpm blocks all others).
+allowBuilds:
+  esbuild: true
+  # Optional native file watcher used by sass/vite; prebuilt binaries work without its script.
+  '@parcel/watcher': false

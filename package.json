@@ -1,0 +1,29 @@
+{
+  "name": "financial-tracker",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r --parallel typecheck",
+    "test:hooks": "vitest run --root .claude/hooks",
+    "test:integration": "pnpm --filter @ft/shared --filter @ft/mcp --filter @ft/api test",
+    "test:e2e": "pnpm --filter @ft/web test:e2e",
+    "test:count": "node scripts/check-test-count.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.5"
+  }
+}
