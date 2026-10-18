@@ -8,7 +8,7 @@ interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 /** Labelled Bootstrap input with inline validation message. */
-export function Field({ label, name, error, hint, ...input }: FieldProps) {
+export function Field({ label, name, error, hint, className, ...input }: FieldProps) {
   const describedBy = error ? `${name}-error` : hint ? `${name}-hint` : undefined;
   return (
     <div>
@@ -18,7 +18,7 @@ export function Field({ label, name, error, hint, ...input }: FieldProps) {
       <input
         id={name}
         name={name}
-        className={`form-control${error ? ' is-invalid' : ''}`}
+        className={`form-control${error ? ' is-invalid' : ''}${className ? ` ${className}` : ''}`}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         {...input}
