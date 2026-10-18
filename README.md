@@ -77,16 +77,47 @@ make run-api-dev        # :4000
 make run-web-dev        # :3000  → http://localhost:3000
 ```
 
-The default `.env` uses `LLM_PROVIDER=fake`, a deterministic scripted assistant that needs no API key. It
-understands phrases like "Create a cash account called Wallet in USD", "I spent 12.50 on Food from Wallet",
-"show transactions for Wallet from 2026-10-01 to 2026-10-31" and "Summarise 2026-10". To use real Claude,
-set:
+The default `.env` uses `LLM_PROVIDER=fake`, so no API key is needed. To use real Claude, set:
 
 ```bash
 LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 LLM_MODEL=claude-haiku-5-5
 ```
+
+### Chatting with the fake LLM
+
+`FakeLlm` (`api/src/chat/fake-llm.ts`) replaces only Claude's "understand the message" step. It matches
+your message against fixed patterns and calls the same MCP tools Claude would, so accounts, transactions,
+cards and history are all real. Matching is case-insensitive. Messages that match nothing get a short help
+reply.
+
+| What you want     | Type exactly like this                                       | MCP tool → card                                      |
+| ----------------- | ------------------------------------------------------------ | ---------------------------------------------------- |
+| Create an account | `Create a cash account called Wallet in USD`                 | `create_account` → Account created                   |
+|                   | `Create a bank account called BCA in IDR`                    |                                                      |
+|                   | `create an account called Savings` (defaults: bank, USD)     |                                                      |
+| Record an expense | `I spent 12.50 on Food from Wallet`                          | `create_transaction` → Expense recorded              |
+|                   | `paid 1500000 on Rent from BCA`                              |                                                      |
+| Record income     | `got paid 5000 into Wallet`                                  | `create_transaction` → Income recorded               |
+|                   | `received 250 into Wallet` / `earned 100 to Wallet`          |                                                      |
+| List transactions | `show transactions for Wallet from 2026-10-01 to 2026-10-31` | `list_transactions` → Transactions (running balance) |
+| Monthly summary   | `Summarise 2026-10`                                          | `monthly_summary` → Monthly summary                  |
+| List accounts     | `What accounts do I have?`                                   | `list_accounts` → no card (reply only)               |
+
+Notes:
+
+- **Several actions in one message:** join them with `and`, `;` or `. `, e.g.
+  `Create a bank account called BCA in IDR and a cash account called Wallet in USD` or
+  `I spent 12.50 on Food from Wallet and I spent 4.80 on Coffee from Wallet; paid 1500000 on Rent from BCA`.
+- **Clarifying questions:** `Show my transactions` (no account or dates) makes the assistant ask
+  _"which account, and what date range?"_. `How did I do?` (no month) makes it ask
+  _"Which month and year should I summarise?"_.
+- **Amounts** are plain numbers in the account's currency: `12.50`, `1500000` (no thousands separators or
+  currency symbols). Transactions are dated today. The category is the single word after "on", e.g. `Food`.
+- **Dates** for listing must be `YYYY-MM-DD`, and the month for summaries `YYYY-MM`.
+- The account name must match an existing account (case-insensitive). Otherwise the assistant replies with
+  the list of your accounts.
 
 Run the whole stack in Docker instead: `make up` (then `make logs`, `make down`).
 
