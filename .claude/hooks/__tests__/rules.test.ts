@@ -50,6 +50,7 @@ describe('checkBash', () => {
     'rm -rf /repo/api/dist',
     'rm -rf node_modules web/.next',
     'cat .env.example',
+    'echo \'<span className="text-truncate">x</span>\' > a.tsx',
     'cat > package.json <<\'EOF\'\n{ "dev": "tsx --env-file-if-exists=../.env src/server.ts" }\nEOF',
     'tail -5 log.txt\nnode --env-file=../.env x.js',
     'psql financial_tracker_test -c "TRUNCATE users"',

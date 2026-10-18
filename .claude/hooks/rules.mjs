@@ -38,7 +38,8 @@ const BASH_RULES = [
   ],
 ];
 
-const SQL_DESTRUCTIVE = /\b(drop\s+(database|table|schema)|truncate\b)/i;
+// `truncate <table>` / `truncate table <t>`, but not identifiers like Bootstrap's `text-truncate`.
+const SQL_DESTRUCTIVE = /\bdrop\s+(database|table|schema)\b|(?<![-\w])truncate\s+(table\s+)?["\w]/i;
 
 const RECURSIVE_RM = /\brm\s+(?:-[a-zA-Z]+\s+)*-[a-zA-Z]*[rR][a-zA-Z]*\s+([^;&|]+)/g;
 

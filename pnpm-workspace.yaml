@@ -6,4 +6,5 @@ packages:
 
 # Packages allowed to run install scripts (pnpm blocks all others).
 allowBuilds:
+  '@parcel/watcher': set this to true or false
   esbuild: true
