@@ -193,11 +193,29 @@ $table-cell-padding-y: 0.85rem;
   }
 }
 .stats-compact .stat-tile {
-  padding: 12px 14px;
-  gap: 4px;
+  padding: 10px 14px;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
   .stat-value {
     font-size: 1.05rem;
-    overflow-wrap: anywhere;
+  }
+}
+.seg-btn {
+  flex: 1;
+  border: 1px solid $ft-input-line;
+  background: #fff;
+  color: $ft-ink;
+  font-weight: 700;
+  &.seg-expense {
+    background: #fff4eb;
+    border-color: $ft-expense-bar;
+    color: $ft-expense-ink;
+  }
+  &.seg-income {
+    background: $ft-income-soft;
+    border-color: $ft-income-bar;
+    color: $ft-income;
   }
 }
 .bar-track {

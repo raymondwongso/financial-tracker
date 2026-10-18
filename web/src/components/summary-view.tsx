@@ -35,7 +35,7 @@ export function SummaryView({
     .slice(0, 5);
   const maxCategory = Math.max(1, ...categories.map((c) => c.totalMinor));
   const keptPct =
-    totals.incomeMinor > 0 ? Math.round((totals.netMinor / totals.incomeMinor) * 100) : null;
+    totals.incomeMinor > 0 ? Math.floor((totals.netMinor / totals.incomeMinor) * 100) : null;
   const pct = (value: number, max: number) => `${Math.max(2, Math.round((value / max) * 100))}%`;
 
   return (
@@ -61,9 +61,7 @@ export function SummaryView({
         aria-label="Monthly totals"
         className={compact ? 'd-grid gap-2 stats-compact' : 'd-grid gap-3'}
         style={{
-          gridTemplateColumns: compact
-            ? 'repeat(auto-fit, minmax(110px, 1fr))'
-            : 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: compact ? '1fr' : 'repeat(auto-fit, minmax(200px, 1fr))',
         }}
       >
         <div className="surface stat-tile">
