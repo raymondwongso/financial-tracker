@@ -62,7 +62,7 @@ export function Sidebar({ user }: { user: User }) {
         </span>
         <button
           type="button"
-          className="btn btn-link btn-sm fw-bold p-0"
+          className="btn btn-link btn-sm fw-bold p-0 text-nowrap"
           onClick={logout}
           disabled={loggingOut}
         >

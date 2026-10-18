@@ -192,6 +192,14 @@ $table-cell-padding-y: 0.85rem;
     }
   }
 }
+.stats-compact .stat-tile {
+  padding: 12px 14px;
+  gap: 4px;
+  .stat-value {
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+  }
+}
 .bar-track {
   height: 8px;
   background: #f1eee6;

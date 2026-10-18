@@ -13,3 +13,4 @@ test-results/
 *.log
 .design-scratch/
 web/next-env.d.ts
+web/.shots/
