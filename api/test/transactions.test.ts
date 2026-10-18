@@ -137,6 +137,49 @@ describe('transactions', () => {
     expect((await list('?month=October')).statusCode).toBe(400);
   });
 
+  it('includes running balances (with the opening balance before the range) for one account', async () => {
+    const add = (type: 'income' | 'expense', amountMinor: number, occurredOn: string) =>
+      createTransactionFor(app, user, { accountId: account.id, type, amountMinor, occurredOn });
+    await add('income', 10000, '2026-09-15'); // before the range → opening balance 100.00
+    await add('income', 25000, '2026-10-01');
+    await add('expense', 1250, '2026-10-18');
+    await add('expense', 480, '2026-10-18');
+    await add('expense', 99999, '2026-11-01'); // after the range → ignored
+
+    const rows = (
+      await list(`?accountId=${account.id}&from=2026-10-01&to=2026-10-31`)
+    ).json() as Array<Transaction & { runningBalanceMinor: number }>;
+    // Newest first; the running balance is the account balance right after each transaction.
+    expect(rows.map((r) => [r.occurredOn, r.runningBalanceMinor])).toEqual([
+      ['2026-10-18', 33270],
+      ['2026-10-18', 33750],
+      ['2026-10-01', 35000],
+    ]);
+
+    const byMonth = (await list(`?accountId=${account.id}&month=2026-10`)).json();
+    expect(byMonth).toEqual(rows);
+  });
+
+  it('omits running balances when listing across accounts', async () => {
+    await createTransactionFor(app, user, { accountId: account.id });
+    const [row] = (await list()).json();
+    expect(row).not.toHaveProperty('runningBalanceMinor');
+  });
+
+  it('filters by an inclusive from/to range', async () => {
+    for (const occurredOn of ['2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07']) {
+      await createTransactionFor(app, user, { accountId: account.id, occurredOn });
+    }
+    const rows = (await list('?from=2026-10-05&to=2026-10-06')).json() as Transaction[];
+    expect(rows.map((r) => r.occurredOn)).toEqual(['2026-10-06', '2026-10-05']);
+  });
+
+  it('rejects inconsistent range filters', async () => {
+    expect((await list('?from=2026-10-01')).statusCode).toBe(400);
+    expect((await list('?from=2026-10-31&to=2026-10-01')).statusCode).toBe(400);
+    expect((await list('?month=2026-10&from=2026-10-01&to=2026-10-31')).statusCode).toBe(400);
+  });
+
   it('requires authentication', async () => {
     expect((await app.inject({ method: 'GET', url: '/transactions' })).statusCode).toBe(401);
   });

@@ -4,7 +4,8 @@ import {
   transactionListSchema,
   transactionSchema,
 } from '@ft/shared';
-import { createTransaction, listTransactions } from '@ft/shared/db';
+import { monthBounds } from '@ft/shared';
+import { accountStatement, createTransaction, listTransactions } from '@ft/shared/db';
 import { notFound } from '../errors';
 import type { App } from '../types';
 
@@ -19,7 +20,15 @@ export async function transactionRoutes(app: App): Promise<void> {
         response: { 200: transactionListSchema },
       },
     },
-    async (request) => listTransactions(app.db, request.user.sub, request.query),
+    async (request) => {
+      const { accountId, month, from, to } = request.query;
+      if (!accountId) return listTransactions(app.db, request.user.sub, request.query);
+
+      // A single account: include the running balance after each transaction (newest first).
+      const range = month ? monthBounds(month) : { from: from ?? '0001-01-01', to: to ?? '9999-12-31' };
+      const statement = await accountStatement(app.db, request.user.sub, accountId, range.from, range.to);
+      return statement ? statement.transactions.reverse() : [];
+    },
   );
 
   app.post(
