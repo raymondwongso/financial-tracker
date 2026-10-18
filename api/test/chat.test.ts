@@ -437,6 +437,31 @@ describe('chat', () => {
       }
     });
 
+    it('keeps the turn and its cards when the LLM fails after a write tool ran', async () => {
+      const llm = new ScriptedLlm((_req, call) => {
+        if (call === 1) {
+          return toolUse('create_account', { name: 'Wallet', type: 'cash', currency: 'USD' });
+        }
+        throw new Error('upstream down');
+      });
+      const { scripted, who, post } = await withLlm(llm);
+      try {
+        const res = await post('Create a cash account called Wallet in USD');
+        expect(res.statusCode).toBe(200);
+        const body = res.json() as ChatSendResponse;
+        expect(body.assistantMessage.content).toMatch(/something went wrong/);
+        expect(kinds(body.assistantMessage.cards)).toEqual(['account_created']);
+        const history = await scripted.inject({
+          method: 'GET',
+          url: '/chat/messages',
+          headers: { cookie: who.cookie },
+        });
+        expect((history.json() as ChatMessagesPage).messages).toHaveLength(2);
+      } finally {
+        await scripted.close();
+      }
+    });
+
     it('returns 502 when the MCP server is unreachable', async () => {
       const { scripted, post } = await withLlm(new ScriptedLlm(() => text('unused')), {
         MCP_URL: 'http://127.0.0.1:9/mcp',

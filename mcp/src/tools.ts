@@ -2,6 +2,7 @@ import {
   accountCreatedDataSchema,
   accountsListedDataSchema,
   accountTypeSchema,
+  amountMinorSchema,
   currencySchema,
   dateSchema,
   formatMoney,
@@ -206,6 +207,9 @@ export function createMcpServer(ctx: ToolContext): McpServer {
         const account = await resolveAccount(args.account);
         const amountMinor = toMinor(args.amount, account.currency);
         if (amountMinor <= 0) throw new ToolError('Amount is too small for this currency.');
+        if (!amountMinorSchema.safeParse(amountMinor).success) {
+          throw new ToolError('Amount is too large.');
+        }
         const tx = await createTransaction(db, userId, {
           accountId: account.id,
           type: args.type,

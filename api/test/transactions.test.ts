@@ -1,7 +1,9 @@
 import type { Account, Transaction } from '@ft/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { App } from '../src/types';
+import { createDb, schema } from '@ft/shared/db';
 import {
+  TEST_DATABASE_URL,
   createAccountFor,
   createTestApp,
   createTransactionFor,
@@ -94,7 +96,8 @@ describe('transactions', () => {
     await createTransactionFor(app, other, { accountId: theirAccount.id });
 
     expect((await list()).json()).toEqual([]);
-    expect((await list(`?accountId=${theirAccount.id}`)).json()).toEqual([]);
+    // Another user's account is reported as not found (no data, no existence leak).
+    expect((await list(`?accountId=${theirAccount.id}`)).statusCode).toBe(404);
   });
 
   it('returns 404 when adding to another user’s account', async () => {
@@ -158,6 +161,33 @@ describe('transactions', () => {
 
     const byMonth = (await list(`?accountId=${account.id}&month=2026-10`)).json();
     expect(byMonth).toEqual(rows);
+  });
+
+  it('returns the newest 500 rows of a long statement with correct balances', async () => {
+    const { db, close } = createDb(TEST_DATABASE_URL, { max: 1 });
+    try {
+      // 505 daily income transactions of 1.00 starting 2025-01-01.
+      const start = Date.UTC(2025, 0, 1);
+      await db.insert(schema.transactions).values(
+        Array.from({ length: 505 }, (_, i) => ({
+          userId: user.id,
+          accountId: account.id,
+          type: 'income' as const,
+          amountMinor: 100,
+          category: 'Daily',
+          occurredOn: new Date(start + i * 86_400_000).toISOString().slice(0, 10),
+        })),
+      );
+    } finally {
+      await close();
+    }
+    const rows = (await list(`?accountId=${account.id}`)).json() as Array<
+      Transaction & { runningBalanceMinor: number }
+    >;
+    expect(rows).toHaveLength(500);
+    // Newest first, and the newest row carries the true closing balance (505 × 1.00).
+    expect(rows[0]!.runningBalanceMinor).toBe(50500);
+    expect(rows.at(-1)!.runningBalanceMinor).toBe(600);
   });
 
   it('omits running balances when listing across accounts', async () => {

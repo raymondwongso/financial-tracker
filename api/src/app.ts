@@ -45,7 +45,9 @@ function createLlm(config: Config): LlmClient {
 export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App> {
   const app = Fastify({
     logger: loggerOptions('api', config.LOG_LEVEL, config.NODE_ENV === 'development'),
-    trustProxy: true,
+    // Only the Next.js server (loopback or private network) may set X-Forwarded-For; otherwise a
+    // client could spoof its IP and bypass rate limits.
+    trustProxy: 'loopback, uniquelocal',
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);

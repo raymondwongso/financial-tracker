@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, getTableColumns, gte, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, lt, lte, sql, type SQL } from 'drizzle-orm';
 import type {
   AccountStatement,
   CreateTransactionInput,
@@ -96,7 +96,13 @@ export async function accountStatement(
     .where(and(ofAccount, lt(transactions.occurredOn, from)));
   const openingBalanceMinor = opening?.total ?? 0;
 
-  const order = [asc(transactions.occurredOn), asc(transactions.createdAt), asc(transactions.id)];
+  // The window runs over the whole range before LIMIT applies, so running balances stay correct
+  // even when only the newest MAX_ROWS rows are returned.
+  const newestFirst = [
+    desc(transactions.occurredOn),
+    desc(transactions.createdAt),
+    desc(transactions.id),
+  ];
   const rows = await db
     .select({
       ...getTableColumns(transactions),
@@ -107,19 +113,24 @@ export async function accountStatement(
     })
     .from(transactions)
     .where(and(ofAccount, gte(transactions.occurredOn, from), lte(transactions.occurredOn, to)))
-    .orderBy(...order)
-    .limit(MAX_ROWS);
+    .orderBy(...newestFirst)
+    .limit(MAX_ROWS + 1);
 
-  const statementRows = rows.map(({ cumulative, ...row }) => ({
-    ...toTransaction(row),
-    runningBalanceMinor: openingBalanceMinor + cumulative,
-  }));
+  const truncated = rows.length > MAX_ROWS;
+  const statementRows = rows
+    .slice(0, MAX_ROWS)
+    .reverse()
+    .map(({ cumulative, ...row }) => ({
+      ...toTransaction(row),
+      runningBalanceMinor: openingBalanceMinor + cumulative,
+    }));
   return {
     account,
     from,
     to,
     openingBalanceMinor,
     closingBalanceMinor: statementRows.at(-1)?.runningBalanceMinor ?? openingBalanceMinor,
+    truncated,
     transactions: statementRows,
   };
 }

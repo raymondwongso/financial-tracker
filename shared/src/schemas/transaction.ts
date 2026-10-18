@@ -56,6 +56,8 @@ export const accountStatementSchema = z.object({
   to: z.string(),
   openingBalanceMinor: z.number().int(),
   closingBalanceMinor: z.number().int(),
+  /** True when the range has more transactions than were returned (only the newest are included). */
+  truncated: z.boolean(),
   transactions: z.array(transactionSchema.extend({ runningBalanceMinor: z.number().int() })),
 });
 

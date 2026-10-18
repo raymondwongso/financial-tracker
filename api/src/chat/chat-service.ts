@@ -36,7 +36,19 @@ export class ChatService {
     while (history[0]?.role === 'assistant') history.shift();
     const messages: Anthropic.MessageParam[] = [...history, { role: 'user', content: message }];
 
-    const { reply, cards } = await this.run(userId, messages, log);
+    const cards: NewChatCard[] = [];
+    let reply: string;
+    try {
+      reply = await this.run(userId, messages, cards, log);
+    } catch (error) {
+      // Tools that already ran have changed data; keep the turn so the user sees what happened
+      // (and doesn't retry into duplicates). With nothing done yet, report the failure instead.
+      if (cards.length === 0) throw error;
+      log.error({ err: error }, 'chat turn failed after tool calls; saving partial result');
+      reply =
+        'I completed the actions shown below, but then something went wrong before I could finish. ' +
+        'Please check them before trying again.';
+    }
     return saveChatTurn(this.db, userId, {
       userContent: message,
       assistantContent: reply,
@@ -44,13 +56,14 @@ export class ChatService {
     });
   }
 
+  /** Runs the tool loop, pushing a card for each successful tool call into `cards` as it goes. */
   private async run(
     userId: string,
     messages: Anthropic.MessageParam[],
+    cards: NewChatCard[],
     log: FastifyBaseLogger,
-  ): Promise<{ reply: string; cards: NewChatCard[] }> {
+  ): Promise<string> {
     const session = await this.mcp.open(userId);
-    const cards: NewChatCard[] = [];
     const system = systemPrompt(new Date().toISOString().slice(0, 10));
 
     try {
@@ -58,7 +71,7 @@ export class ChatService {
         const response = await this.llm.complete({ system, messages, tools: session.tools });
 
         if (response.stop_reason === 'refusal') {
-          return { reply: 'Sorry, I can’t help with that request.', cards };
+          return 'Sorry, I can’t help with that request.';
         }
 
         const uses = response.content.filter(
@@ -70,7 +83,7 @@ export class ChatService {
             .map((b) => b.text)
             .join('\n')
             .trim();
-          return { reply: reply || 'Done.', cards };
+          return reply || 'Done.';
         }
 
         // Keep the full assistant content (including thinking blocks) so the next request is valid.
@@ -92,7 +105,7 @@ export class ChatService {
         // All results for one assistant turn go back in a single user message.
         messages.push({ role: 'user', content: results });
       }
-      return { reply: 'Sorry, that took too many steps. Please try a simpler request.', cards };
+      return 'Sorry, that took too many steps. Please try a simpler request.';
     } finally {
       await session.close();
     }

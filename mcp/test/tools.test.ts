@@ -138,6 +138,18 @@ describe('MCP server', () => {
     expect(res.text).toContain('Existing accounts: Wallet');
   });
 
+  it('rejects amounts too large to store', async () => {
+    await call(client, 'create_account', { name: 'Wallet', type: 'cash', currency: 'USD' });
+    const res = await call(client, 'create_transaction', {
+      account: 'Wallet',
+      type: 'income',
+      amount: 1e20,
+      category: 'Lottery',
+    });
+    expect(res.isError).toBe(true);
+    expect(res.text).toBe('Amount is too large.');
+  });
+
   it('rejects invalid tool input', async () => {
     const res = await call(client, 'create_transaction', {
       account: 'Wallet',

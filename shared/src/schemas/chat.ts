@@ -94,7 +94,10 @@ export const chatSendResponseSchema = z.object({
 const pageQuery = (defaultLimit: number) =>
   z.object({
     /** Opaque cursor from a previous page's `nextCursor`. */
-    before: z.string().regex(/^\d{1,18}$/, 'Invalid cursor').optional(),
+    before: z
+      .string()
+      .regex(/^\d{1,18}$/, 'Invalid cursor')
+      .optional(),
     limit: z.coerce.number().int().min(1).max(100).default(defaultLimit),
   });
 

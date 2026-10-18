@@ -25,9 +25,18 @@ export async function transactionRoutes(app: App): Promise<void> {
       if (!accountId) return listTransactions(app.db, request.user.sub, request.query);
 
       // A single account: include the running balance after each transaction (newest first).
-      const range = month ? monthBounds(month) : { from: from ?? '0001-01-01', to: to ?? '9999-12-31' };
-      const statement = await accountStatement(app.db, request.user.sub, accountId, range.from, range.to);
-      return statement ? statement.transactions.reverse() : [];
+      const range = month
+        ? monthBounds(month)
+        : { from: from ?? '0001-01-01', to: to ?? '9999-12-31' };
+      const statement = await accountStatement(
+        app.db,
+        request.user.sub,
+        accountId,
+        range.from,
+        range.to,
+      );
+      if (!statement) throw notFound('Account');
+      return statement.transactions.reverse();
     },
   );
 
