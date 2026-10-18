@@ -9,6 +9,11 @@ test.describe('authentication', () => {
     }
   });
 
+  test('does not expose the API metrics through the web proxy', async ({ request }) => {
+    expect((await request.get('/api/metrics')).status()).toBe(404);
+    expect((await request.get('/api/health')).status()).toBe(200);
+  });
+
   test('registers, lands on chat, logs out and logs back in', async ({ page }) => {
     const email = await registerNewUser(page, 'Ray Wong');
     await expect(page.getByRole('heading', { name: 'Chat', level: 1 })).toBeVisible();

@@ -6,3 +6,5 @@ pnpm-lock.yaml
 api/migration
 playwright-report
 test-results
+.design-scratch
+web/.next-*

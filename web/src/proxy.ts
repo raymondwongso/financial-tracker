@@ -11,5 +11,5 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // Everything except auth pages, the API proxy, Next internals and observability endpoints.
-  matcher: ['/((?!login|register|api|_next|health|metrics|vitals|favicon.ico).*)'],
+  matcher: ['/((?!(?:login|register|api|_next|health|metrics|vitals|favicon\\.ico)(?:/|$)).*)'],
 };

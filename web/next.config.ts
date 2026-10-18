@@ -1,7 +1,9 @@
 import path from 'node:path';
 import type { NextConfig } from 'next';
 
-const apiUrl = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
+import { config } from './src/config';
+
+const apiUrl = config.apiUrl;
 
 const nextConfig: NextConfig = {
   output: 'standalone',
@@ -20,7 +22,8 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     // Same-origin API: the browser calls /api/*, so the session cookie stays first-party.
-    return [{ source: '/api/:path*', destination: `${apiUrl}/:path*` }];
+    // The API's Prometheus endpoint is not proxied; it is scraped on the internal network only.
+    return [{ source: '/api/:path((?!metrics(?:/|$)).*)', destination: `${apiUrl}/:path` }];
   },
 };
 

@@ -3,7 +3,9 @@ import { redirect } from 'next/navigation';
 import { ApiError, parseResponse } from './api-error';
 import { logger } from './logger';
 
-const API_URL = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
+import { config } from '@/config';
+
+const API_URL = config.apiUrl;
 
 /**
  * Server-side API client for server components: forwards the session cookie and sends the user

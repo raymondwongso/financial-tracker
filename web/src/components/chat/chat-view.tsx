@@ -34,6 +34,7 @@ export function ChatView({ initialMessages, initialCards, suggestions }: Props) 
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [cards, setCards] = useState<ChatCard[]>(initialCards.cards);
   const [cardsCursor, setCardsCursor] = useState(initialCards.nextCursor);
+  const [loadingCards, setLoadingCards] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState<string | null>(null);
@@ -91,10 +92,17 @@ export function ChatView({ initialMessages, initialCards, suggestions }: Props) 
   }, [cursor, loadOlder]);
 
   async function loadMoreCards() {
-    if (!cardsCursor) return;
-    const page = await api<ChatCardsPage>(`/chat/cards?before=${cardsCursor}`);
-    setCards((prev) => [...prev, ...page.cards]);
-    setCardsCursor(page.nextCursor);
+    if (!cardsCursor || loadingCards) return;
+    setLoadingCards(true);
+    try {
+      const page = await api<ChatCardsPage>(`/chat/cards?before=${cardsCursor}`);
+      setCards((prev) => [...prev, ...page.cards]);
+      setCardsCursor(page.nextCursor);
+    } catch {
+      setError('Could not load older items.');
+    } finally {
+      setLoadingCards(false);
+    }
   }
 
   async function send(text: string) {
@@ -279,6 +287,7 @@ export function ChatView({ initialMessages, initialCards, suggestions }: Props) 
                 type="button"
                 className="btn btn-outline-secondary btn-sm"
                 onClick={() => void loadMoreCards()}
+                disabled={loadingCards}
               >
                 Load older items
               </button>
