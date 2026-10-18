@@ -87,6 +87,6 @@ Agents in `.claude/agents/`: `api-engineer`, `web-engineer`, `test-runner` (read
 
 ## Definition of done
 
-1. Code + tests written; `make lint typecheck` clean.
-2. Relevant suites green; test count not lower than baseline.
+1. Code + tests written; `make lint typecheck` clean (the same checks GitHub Actions CI runs on every PR).
+2. Relevant suites green (`make test-integration`, plus `make test-e2e` for UI changes); test count not lower than baseline. CI must stay green.
 3. Committed with the right type; README / `.env.example` updated if behaviour or config changed.

@@ -1,5 +1,8 @@
 # Financial Tracker
 
+[![CI](https://github.com/raymondwongso/financial-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/raymondwongso/financial-tracker/actions/workflows/ci.yml)
+[![Security](https://github.com/raymondwongso/financial-tracker/actions/workflows/security.yml/badge.svg)](https://github.com/raymondwongso/financial-tracker/actions/workflows/security.yml)
+
 Track your income and expenses by **chatting with an assistant**. Tell it "I spent 12.50 on lunch from
 Wallet and paid 1,500,000 rent from BCA" and it records both transactions through our own **MCP server**.
 Each action comes back as a card you can open in a side pane. Dashboard, Accounts and Transactions pages
@@ -151,6 +154,23 @@ make test               # all of the above + the test-count ratchet
 The e2e runner uses the official Playwright Docker image, so no browser system libraries are needed. Set
 `E2E_LOCAL=1` to use a locally installed browser. `scripts/check-test-count.mjs` fails the build if any
 suite has fewer tests than `tests-baseline.json`.
+
+## Continuous integration
+
+GitHub Actions runs on every pull request to `main` and on every push to `main`:
+
+| Workflow | Job                      | What it does                                                                      | Run it locally                                                |
+| -------- | ------------------------ | --------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| CI       | `quality`                | ESLint, TypeScript, Prettier, test-count ratchet                                  | `make lint typecheck && pnpm format:check && pnpm test:count` |
+| CI       | `integration`            | hook tests + shared/mcp/api Vitest suites against a Postgres 17 service container | `make test-integration`                                       |
+| CI       | `docker (api\|mcp\|web)` | builds all three production images (no push)                                      | `make build` / `docker build -f api/Dockerfile .`             |
+| Security | `codeql`                 | CodeQL static analysis (`security-extended` queries) for JS/TS; also runs weekly  | —                                                             |
+| Security | `dependency-review`      | blocks PRs that add dependencies with high/critical advisories                    | —                                                             |
+| Security | `audit`                  | `pnpm audit` of production dependencies (warning only)                            | `pnpm audit --prod --audit-level high`                        |
+
+Dependabot opens grouped weekly update PRs for npm packages, GitHub Actions and Docker base images.
+CI needs no secrets: tests use the scripted fake LLM and a throwaway database. The Playwright suite runs
+locally with `make test-e2e`.
 
 ## Observability
 
