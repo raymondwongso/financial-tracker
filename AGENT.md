@@ -15,6 +15,16 @@ user's data through our own MCP server. It is also a portfolio piece, so code qu
 Data flow: browser → web → (`/api/*` rewrite) → api → Postgres. Chat: api → Claude (tool use) → MCP client
 → mcp → `@ft/shared/db` → Postgres. Every service exposes `/health` and `/metrics` and logs JSON via Pino.
 
+Chat-first UX: after login users land on `/chat`. Each successful MCP tool call becomes a **card** (snapshot
+stored in `chat_cards`, schema `chatCardSchema` in `shared/src/schemas/chat.ts`); cards open in the right
+pane. History is persisted and paginated (20 messages per page).
+
+## Design first
+
+UI or behaviour changes are designed and **approved by the user before any code is written**: update the
+claude.ai design canvas (and list the API/data changes it implies), wait for approval, then implement.
+For Next.js 16 conventions read `web/AGENTS.md` and the docs in `web/node_modules/next/dist/docs/`.
+
 ## Commands
 
 ```
@@ -24,7 +34,7 @@ make migrate-database    # apply api/migration to dev and test DBs
 make run-api-dev | run-mcp-dev | run-web-dev    # hot reload
 make lint typecheck
 make test-integration    # shared + mcp + api (Vitest, real Postgres)
-make test-e2e            # Playwright
+make test-e2e            # Playwright (scripts/e2e.sh: test ports, fake LLM, runs in Docker)
 make test                # everything + test-count ratchet
 ```
 
