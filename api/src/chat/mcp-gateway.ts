@@ -4,13 +4,18 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
+export interface McpToolResult {
+  /** Human-readable result for the LLM. */
+  text: string;
+  isError: boolean;
+  /** Raw snapshot data (minor units) used to build chat cards. */
+  structured?: Record<string, unknown>;
+}
+
 export interface McpSession {
   /** MCP tools converted to Claude tool definitions. */
   tools: Anthropic.Tool[];
-  callTool(
-    name: string,
-    input: Record<string, unknown>,
-  ): Promise<{ text: string; isError: boolean }>;
+  callTool(name: string, input: Record<string, unknown>): Promise<McpToolResult>;
   close(): Promise<void>;
 }
 
@@ -43,7 +48,11 @@ export class McpGateway {
           .map((c) => (c.type === 'text' ? c.text : ''))
           .join('\n')
           .trim();
-        return { text, isError: result.isError === true };
+        return {
+          text,
+          isError: result.isError === true,
+          structured: result.structuredContent as Record<string, unknown> | undefined,
+        };
       },
       close: () => client.close(),
     };

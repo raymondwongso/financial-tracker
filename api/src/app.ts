@@ -71,6 +71,7 @@ export async function buildApp(config: Config, deps: AppDeps = {}): Promise<App>
     prefix: '/chat',
     rateLimit: config.CHAT_RATE_LIMIT,
     chat: new ChatService(
+      db,
       deps.llm ?? createLlm(config),
       new McpGateway(config.MCP_URL, config.MCP_INTERNAL_SECRET),
     ),

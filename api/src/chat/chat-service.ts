@@ -1,39 +1,56 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import type { ChatMessage, ChatResponse, ChatToolCall } from '@ft/shared';
+import type { ChatSendResponse } from '@ft/shared';
+import { recentChatHistory, saveChatTurn, type Db, type NewChatCard } from '@ft/shared/db';
 import type { FastifyBaseLogger } from 'fastify';
+import { cardFromToolResult } from './cards';
 import type { LlmClient } from './llm';
 import type { McpGateway } from './mcp-gateway';
 
 export const MAX_TOOL_ITERATIONS = 5;
+/** Previous messages sent to Claude as context. */
+export const CONTEXT_MESSAGES = 20;
 
 const systemPrompt = (today: string) =>
   [
     'You are the assistant inside Financial Tracker, a personal finance app.',
     `Today is ${today}.`,
     'Use the provided tools to read and change the user’s accounts and transactions; never invent data.',
+    'Call create_account once per account and create_transaction once per transaction, even when one message mentions several.',
     'Amounts given to tools are in major units (12.50 means twelve dollars fifty).',
     'If the account for a transaction is unclear, check list_accounts or ask the user.',
-    'Reply in one to three short sentences of plain text and mention the amounts involved.',
+    'Before listing transactions you need the account, a start date and an end date; before a monthly summary you need the month and year. If any of these is missing, ask the user for it and do not call the tool.',
+    'The app shows each result as a card, so reply in one or two short sentences of plain text instead of repeating every detail.',
   ].join(' ');
 
-/** Runs one chat turn: Claude chooses MCP tools, we execute them, until Claude answers in text. */
+/** Runs one chat turn: Claude chooses MCP tools, we execute them, then the turn is saved with its cards. */
 export class ChatService {
   constructor(
+    private readonly db: Db,
     private readonly llm: LlmClient,
     private readonly mcp: McpGateway,
   ) {}
 
-  async reply(
+  async send(userId: string, message: string, log: FastifyBaseLogger): Promise<ChatSendResponse> {
+    const history = await recentChatHistory(this.db, userId, CONTEXT_MESSAGES);
+    // Claude requires the conversation to start with a user turn.
+    while (history[0]?.role === 'assistant') history.shift();
+    const messages: Anthropic.MessageParam[] = [...history, { role: 'user', content: message }];
+
+    const { reply, cards } = await this.run(userId, messages, log);
+    return saveChatTurn(this.db, userId, {
+      userContent: message,
+      assistantContent: reply,
+      cards,
+    });
+  }
+
+  private async run(
     userId: string,
-    history: ChatMessage[],
+    messages: Anthropic.MessageParam[],
     log: FastifyBaseLogger,
-  ): Promise<ChatResponse> {
+  ): Promise<{ reply: string; cards: NewChatCard[] }> {
     const session = await this.mcp.open(userId);
-    const toolCalls: ChatToolCall[] = [];
-    const messages: Anthropic.MessageParam[] = history.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const cards: NewChatCard[] = [];
     const system = systemPrompt(new Date().toISOString().slice(0, 10));
 
     try {
@@ -41,7 +58,7 @@ export class ChatService {
         const response = await this.llm.complete({ system, messages, tools: session.tools });
 
         if (response.stop_reason === 'refusal') {
-          return { reply: 'Sorry, I can’t help with that request.', toolCalls };
+          return { reply: 'Sorry, I can’t help with that request.', cards };
         }
 
         const uses = response.content.filter(
@@ -53,7 +70,7 @@ export class ChatService {
             .map((b) => b.text)
             .join('\n')
             .trim();
-          return { reply: reply || 'Done.', toolCalls };
+          return { reply: reply || 'Done.', cards };
         }
 
         // Keep the full assistant content (including thinking blocks) so the next request is valid.
@@ -63,7 +80,8 @@ export class ChatService {
           const input = (use.input ?? {}) as Record<string, unknown>;
           const result = await session.callTool(use.name, input);
           log.info({ tool: use.name, isError: result.isError }, 'chat tool call');
-          toolCalls.push({ name: use.name, input, isError: result.isError });
+          const card = cardFromToolResult(use.name, result);
+          if (card) cards.push(card);
           results.push({
             type: 'tool_result',
             tool_use_id: use.id,
@@ -74,10 +92,7 @@ export class ChatService {
         // All results for one assistant turn go back in a single user message.
         messages.push({ role: 'user', content: results });
       }
-      return {
-        reply: 'Sorry, that took too many steps. Please try a simpler request.',
-        toolCalls,
-      };
+      return { reply: 'Sorry, that took too many steps. Please try a simpler request.', cards };
     } finally {
       await session.close();
     }
