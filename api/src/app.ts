@@ -15,6 +15,7 @@ import { registerErrorHandler } from './plugins/error-handler';
 import { accountRoutes } from './routes/accounts';
 import { authRoutes } from './routes/auth';
 import { healthRoutes } from './routes/health';
+import { summaryRoutes } from './routes/summary';
 import { transactionRoutes } from './routes/transactions';
 import type { App } from './types';
 
@@ -49,6 +50,7 @@ export async function buildApp(config: Config): Promise<App> {
   await app.register(authRoutes, { prefix: '/auth', rateLimit: config.AUTH_RATE_LIMIT });
   await app.register(accountRoutes, { prefix: '/accounts' });
   await app.register(transactionRoutes, { prefix: '/transactions' });
+  await app.register(summaryRoutes, { prefix: '/summary' });
 
   return app;
 }
