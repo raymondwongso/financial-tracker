@@ -4,6 +4,8 @@ const apiUrl = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  // Lets the e2e run use its own build directory next to a running dev server.
+  distDir: process.env.NEXT_DIST_DIR ?? '.next',
   // @ft/shared is shipped as TypeScript source.
   transpilePackages: ['@ft/shared'],
   serverExternalPackages: ['pino', 'prom-client'],

@@ -36,7 +36,7 @@ services:
     build: { context: ., dockerfile: mcp/Dockerfile }
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-tracker}:${POSTGRES_PASSWORD:-tracker}@postgres:5432/${POSTGRES_DB:-financial_tracker}
-      MCP_INTERNAL_SECRET: ${MCP_INTERNAL_SECRET:?set MCP_INTERNAL_SECRET in .env}
+      MCP_INTERNAL_SECRET: ${MCP_INTERNAL_SECRET:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     # Internal only: reachable by the api container, not published to the host.
     expose: ['4100']
@@ -53,10 +53,10 @@ services:
     image: financial-tracker-api
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-tracker}:${POSTGRES_PASSWORD:-tracker}@postgres:5432/${POSTGRES_DB:-financial_tracker}
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_SECRET: ${JWT_SECRET:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       MCP_URL: http://mcp:4100/mcp
-      MCP_INTERNAL_SECRET: ${MCP_INTERNAL_SECRET:?set MCP_INTERNAL_SECRET in .env}
+      MCP_INTERNAL_SECRET: ${MCP_INTERNAL_SECRET:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-fake}
       LLM_MODEL: ${LLM_MODEL:-claude-haiku-5-5}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
