@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  chatRequestSchema,
+  cardKindByTool,
+  chatCardSchema,
+  chatMessagesQuerySchema,
+  chatSendSchema,
   createAccountSchema,
   createTransactionSchema,
   listTransactionsQuerySchema,
@@ -79,21 +82,37 @@ describe('transaction schemas', () => {
 });
 
 describe('chat schemas', () => {
-  it('requires the last message to come from the user', () => {
-    expect(
-      chatRequestSchema.safeParse({ messages: [{ role: 'user', content: 'hi' }] }).success,
-    ).toBe(true);
-    expect(
-      chatRequestSchema.safeParse({
-        messages: [
-          { role: 'user', content: 'hi' },
-          { role: 'assistant', content: 'hello' },
-        ],
-      }).success,
-    ).toBe(false);
+  it('accepts a trimmed, non-empty message', () => {
+    expect(chatSendSchema.parse({ message: '  hi  ' })).toEqual({ message: 'hi' });
+    expect(chatSendSchema.safeParse({ message: 'x'.repeat(4001) }).success).toBe(false);
   });
 
-  it('rejects empty conversations', () => {
-    expect(chatRequestSchema.safeParse({ messages: [] }).success).toBe(false);
+  it('rejects empty messages', () => {
+    expect(chatSendSchema.safeParse({ message: '   ' }).success).toBe(false);
+  });
+
+  it('validates card snapshots by kind', () => {
+    const card = {
+      id: uuid,
+      createdAt: '2026-10-18T10:02:00.000Z',
+      kind: 'account_created',
+      data: { account: { id: uuid, name: 'BCA', type: 'bank', currency: 'IDR', balanceMinor: 0 } },
+    };
+    expect(chatCardSchema.safeParse(card).success).toBe(true);
+    expect(chatCardSchema.safeParse({ ...card, kind: 'monthly_summary' }).success).toBe(false);
+  });
+
+  it('maps tools to card kinds, with no card for list_accounts', () => {
+    expect(cardKindByTool).toEqual({
+      create_account: 'account_created',
+      create_transaction: 'transaction_recorded',
+      list_transactions: 'transactions_listed',
+      monthly_summary: 'monthly_summary',
+    });
+  });
+
+  it('defaults chat page size to 20 messages', () => {
+    expect(chatMessagesQuerySchema.parse({})).toEqual({ limit: 20 });
+    expect(chatMessagesQuerySchema.safeParse({ limit: '500' }).success).toBe(false);
   });
 });

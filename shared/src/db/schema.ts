@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  bigserial,
+  jsonb,
   check,
   date,
   index,
@@ -13,9 +15,12 @@ import {
 } from 'drizzle-orm/pg-core';
 import { accountTypes } from '../schemas/account';
 import { transactionTypes } from '../schemas/transaction';
+import { chatCardKinds, chatRoles } from '../schemas/chat';
 
 export const accountTypeEnum = pgEnum('account_type', accountTypes);
 export const transactionTypeEnum = pgEnum('transaction_type', transactionTypes);
+export const chatRoleEnum = pgEnum('chat_role', chatRoles);
+export const chatCardKindEnum = pgEnum('chat_card_kind', chatCardKinds);
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 
@@ -71,6 +76,46 @@ export const transactions = pgTable(
   ],
 );
 
+/** One chat session per user; `seq` gives a strict order for cursor pagination. */
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seq: bigserial('seq', { mode: 'number' }).notNull().unique(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: chatRoleEnum('role').notNull(),
+    content: text('content').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('chat_messages_user_id_seq_idx').on(t.userId, t.seq)],
+);
+
+/** Snapshot cards produced by assistant tool calls; `data` is validated by `chatCardSchema`. */
+export const chatCards = pgTable(
+  'chat_cards',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    seq: bigserial('seq', { mode: 'number' }).notNull().unique(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: 'cascade' }),
+    kind: chatCardKindEnum('kind').notNull(),
+    data: jsonb('data').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('chat_cards_user_id_seq_idx').on(t.userId, t.seq),
+    index('chat_cards_message_id_idx').on(t.messageId),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
 export type TransactionRow = typeof transactions.$inferSelect;
+export type ChatMessageRow = typeof chatMessages.$inferSelect;
+export type ChatCardRow = typeof chatCards.$inferSelect;

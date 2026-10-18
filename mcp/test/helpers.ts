@@ -60,7 +60,12 @@ export async function call<T = unknown>(
   client: Client,
   name: string,
   args: Record<string, unknown> = {},
-): Promise<{ isError: boolean; data: T; text: string }> {
+): Promise<{
+  isError: boolean;
+  data: T;
+  text: string;
+  structured: Record<string, unknown> | undefined;
+}> {
   const result = (await client.callTool({ name, arguments: args })) as CallToolResult;
   const first = result.content[0];
   const text = first && first.type === 'text' ? first.text : '';
@@ -70,5 +75,10 @@ export async function call<T = unknown>(
   } catch {
     data = text as T;
   }
-  return { isError: result.isError === true, data, text };
+  return {
+    isError: result.isError === true,
+    data,
+    text,
+    structured: result.structuredContent as Record<string, unknown> | undefined,
+  };
 }

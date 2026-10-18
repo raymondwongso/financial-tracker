@@ -5,3 +5,4 @@ export * from './repositories/users';
 export * from './repositories/accounts';
 export * from './repositories/transactions';
 export * from './repositories/summary';
+export * from './repositories/chat';

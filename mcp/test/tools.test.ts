@@ -58,12 +58,16 @@ describe('MCP server', () => {
       currency: 'usd',
     });
     expect(res.isError).toBe(false);
-    expect(res.data).toMatchObject({
-      name: 'Wallet',
-      type: 'cash',
-      currency: 'USD',
-      balance: '$0.00',
+    expect(res.structured).toEqual({
+      account: {
+        id: expect.any(String),
+        name: 'Wallet',
+        type: 'cash',
+        currency: 'USD',
+        balanceMinor: 0,
+      },
     });
+    expect(res.data).toMatchObject({ created: 'Wallet', balance: '$0.00' });
 
     const listed = await call<Array<{ name: string }>>(client, 'list_accounts');
     expect(listed.data.map((a) => a.name)).toEqual(['Wallet']);
@@ -91,11 +95,20 @@ describe('MCP server', () => {
       occurredOn: '2026-10-18',
     });
     expect(res.isError).toBe(false);
-    expect(res.data).toMatchObject({
-      account: 'Wallet',
-      amount: '$12.50',
-      occurredOn: '2026-10-18',
+    expect(res.structured).toEqual({
+      transaction: {
+        id: expect.any(String),
+        accountId: expect.any(String),
+        accountName: 'Wallet',
+        currency: 'USD',
+        type: 'expense',
+        amountMinor: 1250,
+        category: 'Food',
+        description: 'Lunch',
+        occurredOn: '2026-10-18',
+      },
     });
+    expect(res.data).toMatchObject({ account: 'Wallet', amount: '-$12.50' });
 
     const rows = await listTransactions(handle.db, userId);
     expect(rows).toHaveLength(1);
@@ -135,29 +148,53 @@ describe('MCP server', () => {
     expect(res.isError).toBe(true);
   });
 
-  it('list_transactions filters by account and month', async () => {
+  it('list_transactions returns one account and date range with running balances', async () => {
     await call(client, 'create_account', { name: 'Wallet', type: 'cash', currency: 'USD' });
     await call(client, 'create_account', { name: 'Bank', type: 'bank', currency: 'USD' });
-    const add = (account: string, occurredOn: string) =>
-      call(client, 'create_transaction', {
-        account,
-        type: 'expense',
-        amount: 1,
-        category: 'Misc',
-        occurredOn,
-      });
-    await add('Wallet', '2026-10-01');
-    await add('Wallet', '2026-09-30');
-    await add('Bank', '2026-10-02');
+    const add = (account: string, type: string, amount: number, occurredOn: string) =>
+      call(client, 'create_transaction', { account, type, amount, category: 'Misc', occurredOn });
+    await add('Wallet', 'income', 100, '2026-09-30'); // before the range → opening balance
+    await add('Wallet', 'income', 250, '2026-10-01');
+    await add('Wallet', 'expense', 12.5, '2026-10-18');
+    await add('Bank', 'expense', 1, '2026-10-02'); // other account → excluded
 
-    const res = await call<Array<{ account: string; occurredOn: string }>>(
-      client,
-      'list_transactions',
-      { account: 'Wallet', month: '2026-10' },
-    );
-    expect(res.data).toEqual([
-      expect.objectContaining({ account: 'Wallet', occurredOn: '2026-10-01' }),
+    const res = await call<{ closingBalance: string }>(client, 'list_transactions', {
+      account: 'Wallet',
+      startDate: '2026-10-01',
+      endDate: '2026-10-31',
+    });
+    expect(res.isError).toBe(false);
+    expect(res.structured).toMatchObject({
+      account: { name: 'Wallet', currency: 'USD' },
+      from: '2026-10-01',
+      to: '2026-10-31',
+      openingBalanceMinor: 10000,
+      closingBalanceMinor: 33750,
+    });
+    const rows = (res.structured!.transactions as Array<Record<string, unknown>>).map((t) => [
+      t.occurredOn,
+      t.runningBalanceMinor,
     ]);
+    expect(rows).toEqual([
+      ['2026-10-01', 35000],
+      ['2026-10-18', 33750],
+    ]);
+    expect(res.data.closingBalance).toBe('$337.50');
+  });
+
+  it('list_transactions requires an account and both dates', async () => {
+    await call(client, 'create_account', { name: 'Wallet', type: 'cash', currency: 'USD' });
+    for (const args of [
+      { account: 'Wallet' },
+      { startDate: '2026-10-01', endDate: '2026-10-31' },
+      { account: 'Wallet', startDate: '2026-10-31', endDate: '2026-10-01' },
+    ]) {
+      expect((await call(client, 'list_transactions', args)).isError).toBe(true);
+    }
+  });
+
+  it('monthly_summary requires the month', async () => {
+    expect((await call(client, 'monthly_summary', {})).isError).toBe(true);
   });
 
   it('monthly_summary returns formatted totals', async () => {
@@ -179,8 +216,13 @@ describe('MCP server', () => {
 
     const res = await call<{ totals: unknown[] }>(client, 'monthly_summary', { month: '2026-10' });
     expect(res.data.totals).toEqual([
-      { currency: 'USD', income: '$5,000.00', expense: '$1,200.00', net: '$3,800.00' },
+      { currency: 'USD', income: '$5,000.00', expense: '$1,200.00', net: '+$3,800.00' },
     ]);
+    expect(res.structured).toMatchObject({
+      month: '2026-10',
+      totals: [{ currency: 'USD', incomeMinor: 500000, expenseMinor: 120000, netMinor: 380000 }],
+      byAccount: [{ accountName: 'Bank', currency: 'USD' }],
+    });
   });
 
   it('never exposes or modifies another user’s data', async () => {

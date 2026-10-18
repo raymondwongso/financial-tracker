@@ -1,22 +1,31 @@
 import {
+  accountCreatedDataSchema,
+  accountsListedDataSchema,
   accountTypeSchema,
   currencySchema,
-  currentMonth,
   dateSchema,
   formatMoney,
+  monthlySummaryDataSchema,
   monthSchema,
   toMinor,
+  transactionRecordedDataSchema,
+  transactionsListedDataSchema,
   transactionTypeSchema,
   type Account,
+  type AccountCreatedData,
+  type AccountsListedData,
+  type MonthlySummaryData,
+  type TransactionRecordedData,
+  type TransactionsListedData,
 } from '@ft/shared';
 import {
+  accountStatement,
   ConflictError,
   createAccount,
   createTransaction,
   findAccountByName,
   getAccount,
   listAccounts,
-  listTransactions,
   monthlySummary,
   type Db,
 } from '@ft/shared/db';
@@ -31,32 +40,33 @@ export interface ToolContext {
   onToolCall?: (tool: string, outcome: 'ok' | 'error') => void;
 }
 
-const MAX_LISTED_TRANSACTIONS = 50;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class ToolError extends Error {}
 
-const ok = (data: unknown): CallToolResult => ({
-  content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
-});
+/**
+ * Every successful tool returns two views of the same result:
+ * - `structuredContent`: raw snapshot data (minor units) that the API stores as a chat card;
+ * - text: a compact, human-readable rendering for the LLM to phrase its reply from.
+ */
+interface ToolOutput<T> {
+  data: T;
+  text: unknown;
+}
+
 const fail = (message: string): CallToolResult => ({
   isError: true,
   content: [{ type: 'text', text: message }],
 });
 
-const presentAccount = (a: Account) => ({
-  id: a.id,
-  name: a.name,
-  type: a.type,
-  currency: a.currency,
-  balance: formatMoney(a.balanceMinor, a.currency),
-});
+const money = (minor: number, currency: string, signed = false) =>
+  formatMoney(minor, currency, { signed });
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 /** Builds an MCP server whose tools are bound to one user. Created per request (stateless transport). */
 export function createMcpServer(ctx: ToolContext): McpServer {
-  const server = new McpServer({ name: 'financial-tracker', version: '0.1.0' });
+  const server = new McpServer({ name: 'financial-tracker', version: '0.2.0' });
   const { db, userId } = ctx;
 
   async function resolveAccount(ref: string): Promise<Account> {
@@ -72,13 +82,19 @@ export function createMcpServer(ctx: ToolContext): McpServer {
     return account;
   }
 
-  // Wraps a handler with uniform error handling and metrics.
-  function tool<Args>(name: string, handler: (args: Args) => Promise<unknown>) {
+  // Wraps a handler with uniform result shaping, error handling and metrics.
+  function tool<Args, T extends Record<string, unknown>>(
+    name: string,
+    handler: (args: Args) => Promise<ToolOutput<T>>,
+  ) {
     return async (args: Args): Promise<CallToolResult> => {
       try {
-        const result = ok(await handler(args));
+        const { data, text } = await handler(args);
         ctx.onToolCall?.(name, 'ok');
-        return result;
+        return {
+          structuredContent: data,
+          content: [{ type: 'text', text: JSON.stringify(text, null, 2) }],
+        };
       } catch (error) {
         ctx.onToolCall?.(name, 'error');
         if (error instanceof ToolError || error instanceof ConflictError)
@@ -93,10 +109,23 @@ export function createMcpServer(ctx: ToolContext): McpServer {
     {
       title: 'List accounts',
       description:
-        "List the user's financial accounts with their type, currency and current balance.",
+        "List the user's financial accounts with their type, currency and current balance. " +
+        'Use it to find the right account name before other tools.',
       inputSchema: z.object({}),
+      outputSchema: accountsListedDataSchema,
     },
-    tool('list_accounts', async () => (await listAccounts(db, userId)).map(presentAccount)),
+    tool('list_accounts', async (): Promise<ToolOutput<AccountsListedData>> => {
+      const accounts = await listAccounts(db, userId);
+      return {
+        data: { accounts },
+        text: accounts.map((a) => ({
+          name: a.name,
+          type: a.type,
+          currency: a.currency,
+          balance: money(a.balanceMinor, a.currency),
+        })),
+      };
+    }),
   );
 
   server.registerTool(
@@ -105,17 +134,39 @@ export function createMcpServer(ctx: ToolContext): McpServer {
       title: 'Create account',
       description:
         'Create a financial account (bank account, cash wallet, credit card, e-wallet or investment). ' +
-        'Account names are unique per user (case-insensitive).',
+        'Account names are unique per user (case-insensitive). Call once per account.',
       inputSchema: z.object({
         name: z.string().trim().min(1).max(100).describe('Display name, e.g. "BCA Savings"'),
         type: accountTypeSchema.describe('Kind of account'),
         currency: currencySchema.describe('ISO 4217 code such as USD, IDR, EUR'),
       }),
+      outputSchema: accountCreatedDataSchema,
     },
     tool(
       'create_account',
-      async (args: { name: string; type: Account['type']; currency: string }) =>
-        presentAccount(await createAccount(db, userId, args)),
+      async (args: {
+        name: string;
+        type: Account['type'];
+        currency: string;
+      }): Promise<ToolOutput<AccountCreatedData>> => {
+        const a = await createAccount(db, userId, args);
+        const account = {
+          id: a.id,
+          name: a.name,
+          type: a.type,
+          currency: a.currency,
+          balanceMinor: a.balanceMinor,
+        };
+        return {
+          data: { account },
+          text: {
+            created: a.name,
+            type: a.type,
+            currency: a.currency,
+            balance: money(0, a.currency),
+          },
+        };
+      },
     ),
   );
 
@@ -124,8 +175,9 @@ export function createMcpServer(ctx: ToolContext): McpServer {
     {
       title: 'Record transaction',
       description:
-        'Record an income or expense on one of the user\'s accounts. "amount" is in major units ' +
-        '(e.g. 12.50 dollars) and is always positive; "type" says whether money came in or went out.',
+        "Record ONE income or expense on one of the user's accounts; call it once per transaction " +
+        '(several calls for several transactions). "amount" is in major units (e.g. 12.50 dollars) ' +
+        'and always positive; "type" says whether money came in or went out.',
       inputSchema: z.object({
         account: z.string().min(1).describe('Account name (or id) as returned by list_accounts'),
         type: transactionTypeSchema,
@@ -136,9 +188,10 @@ export function createMcpServer(ctx: ToolContext): McpServer {
           .min(1)
           .max(50)
           .describe('Short category, e.g. Food, Rent, Salary'),
-        description: z.string().trim().max(255).optional(),
+        description: z.string().trim().max(255).optional().describe('What it was, e.g. "Lunch"'),
         occurredOn: dateSchema.optional().describe('YYYY-MM-DD; defaults to today'),
       }),
+      outputSchema: transactionRecordedDataSchema,
     },
     tool(
       'create_transaction',
@@ -149,7 +202,7 @@ export function createMcpServer(ctx: ToolContext): McpServer {
         category: string;
         description?: string;
         occurredOn?: string;
-      }) => {
+      }): Promise<ToolOutput<TransactionRecordedData>> => {
         const account = await resolveAccount(args.account);
         const amountMinor = toMinor(args.amount, account.currency);
         if (amountMinor <= 0) throw new ToolError('Amount is too small for this currency.');
@@ -162,14 +215,29 @@ export function createMcpServer(ctx: ToolContext): McpServer {
           occurredOn: args.occurredOn ?? today(),
         });
         if (!tx) throw new ToolError('Account not found.');
+        const signed = tx.type === 'income' ? tx.amountMinor : -tx.amountMinor;
         return {
-          id: tx.id,
-          account: account.name,
-          type: tx.type,
-          amount: formatMoney(tx.amountMinor, account.currency),
-          category: tx.category,
-          description: tx.description,
-          occurredOn: tx.occurredOn,
+          data: {
+            transaction: {
+              id: tx.id,
+              accountId: account.id,
+              accountName: account.name,
+              currency: account.currency,
+              type: tx.type,
+              amountMinor: tx.amountMinor,
+              category: tx.category,
+              description: tx.description,
+              occurredOn: tx.occurredOn,
+            },
+          },
+          text: {
+            recorded: tx.type,
+            account: account.name,
+            amount: money(signed, account.currency, true),
+            category: tx.category,
+            description: tx.description,
+            occurredOn: tx.occurredOn,
+          },
         };
       },
     ),
@@ -179,31 +247,57 @@ export function createMcpServer(ctx: ToolContext): McpServer {
     'list_transactions',
     {
       title: 'List transactions',
-      description: `List the user's most recent transactions (up to ${MAX_LISTED_TRANSACTIONS}), optionally for one account and/or month.`,
+      description:
+        "List one account's transactions in a date range, oldest first, with the running balance " +
+        'after each one. All three arguments are required: if the user did not say which account ' +
+        'or which dates, ask them first instead of guessing.',
       inputSchema: z.object({
-        account: z.string().min(1).optional().describe('Account name or id'),
-        month: monthSchema.optional().describe('YYYY-MM'),
+        account: z.string().min(1).describe('Account name or id'),
+        startDate: dateSchema.describe('First day, YYYY-MM-DD (inclusive)'),
+        endDate: dateSchema.describe('Last day, YYYY-MM-DD (inclusive)'),
       }),
+      outputSchema: transactionsListedDataSchema,
     },
-    tool('list_transactions', async (args: { account?: string; month?: string }) => {
-      const account = args.account ? await resolveAccount(args.account) : undefined;
-      const accounts = new Map((await listAccounts(db, userId)).map((a) => [a.id, a]));
-      const rows = await listTransactions(db, userId, {
-        accountId: account?.id,
-        month: args.month,
-      });
-      return rows.slice(0, MAX_LISTED_TRANSACTIONS).map((t) => {
-        const acc = accounts.get(t.accountId);
+    tool(
+      'list_transactions',
+      async (args: {
+        account: string;
+        startDate: string;
+        endDate: string;
+      }): Promise<ToolOutput<TransactionsListedData>> => {
+        if (args.startDate > args.endDate) {
+          throw new ToolError('startDate must be on or before endDate.');
+        }
+        const account = await resolveAccount(args.account);
+        const statement = await accountStatement(
+          db,
+          userId,
+          account.id,
+          args.startDate,
+          args.endDate,
+        );
+        if (!statement) throw new ToolError('Account not found.');
+        const c = account.currency;
         return {
-          occurredOn: t.occurredOn,
-          account: acc?.name,
-          type: t.type,
-          amount: formatMoney(t.amountMinor, acc?.currency ?? 'USD'),
-          category: t.category,
-          description: t.description,
+          data: statement,
+          text: {
+            account: account.name,
+            from: statement.from,
+            to: statement.to,
+            openingBalance: money(statement.openingBalanceMinor, c),
+            closingBalance: money(statement.closingBalanceMinor, c),
+            transactions: statement.transactions.map((t) => ({
+              occurredOn: t.occurredOn,
+              type: t.type,
+              amount: money(t.type === 'income' ? t.amountMinor : -t.amountMinor, c, true),
+              category: t.category,
+              description: t.description,
+              balanceAfter: money(t.runningBalanceMinor, c),
+            })),
+          },
         };
-      });
-    }),
+      },
+    ),
   );
 
   server.registerTool(
@@ -211,35 +305,41 @@ export function createMcpServer(ctx: ToolContext): McpServer {
     {
       title: 'Monthly summary',
       description:
-        'Summarise income, expenses and net for a month, per currency, per account and per category.',
-      inputSchema: z.object({
-        month: monthSchema.optional().describe('YYYY-MM; defaults to the current month'),
-      }),
+        'Summarise income, expenses and net for one month across all accounts (per currency, per ' +
+        'account and per category). The month is required: if the user did not say which month ' +
+        'and year, ask them first instead of guessing.',
+      inputSchema: z.object({ month: monthSchema.describe('YYYY-MM, e.g. 2026-10') }),
+      outputSchema: monthlySummaryDataSchema,
     },
-    tool('monthly_summary', async (args: { month?: string }) => {
-      const s = await monthlySummary(db, userId, args.month ?? currentMonth());
-      const money = (minor: number, currency: string) => formatMoney(minor, currency);
-      return {
-        month: s.month,
-        totals: s.totals.map((t) => ({
-          currency: t.currency,
-          income: money(t.incomeMinor, t.currency),
-          expense: money(t.expenseMinor, t.currency),
-          net: money(t.netMinor, t.currency),
-        })),
-        byAccount: s.byAccount.map((a) => ({
-          account: a.accountName,
-          income: money(a.incomeMinor, a.currency),
-          expense: money(a.expenseMinor, a.currency),
-          net: money(a.netMinor, a.currency),
-        })),
-        byCategory: s.byCategory.map((c) => ({
-          category: c.category,
-          type: c.type,
-          total: money(c.totalMinor, c.currency),
-        })),
-      };
-    }),
+    tool(
+      'monthly_summary',
+      async (args: { month: string }): Promise<ToolOutput<MonthlySummaryData>> => {
+        const s = await monthlySummary(db, userId, args.month);
+        return {
+          data: s,
+          text: {
+            month: s.month,
+            totals: s.totals.map((t) => ({
+              currency: t.currency,
+              income: money(t.incomeMinor, t.currency),
+              expense: money(t.expenseMinor, t.currency),
+              net: money(t.netMinor, t.currency, true),
+            })),
+            byAccount: s.byAccount.map((a) => ({
+              account: a.accountName,
+              income: money(a.incomeMinor, a.currency),
+              expense: money(a.expenseMinor, a.currency),
+              net: money(a.netMinor, a.currency, true),
+            })),
+            byCategory: s.byCategory.map((c) => ({
+              category: c.category,
+              type: c.type,
+              total: money(c.totalMinor, c.currency),
+            })),
+          },
+        };
+      },
+    ),
   );
 
   return server;
