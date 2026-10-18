@@ -3,5 +3,7 @@ packages:
   - web
   - shared
   - mcp
+
+# Packages allowed to run install scripts (pnpm blocks all others).
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true

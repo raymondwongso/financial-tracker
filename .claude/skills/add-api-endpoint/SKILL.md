@@ -13,11 +13,11 @@ description: Step-by-step recipe for adding or changing a Fastify REST endpoint 
      `api/migration`). Never edit an existing migration.
 3. **Route** — add the handler in `api/src/routes/<resource>.ts`:
    - declare `schema: { body | querystring | params, response }` with the shared zod schemas;
-   - use `preHandler: app.authenticate` and read `request.user.sub` as the user id;
-   - throw `notFound()` / `conflict()` from `api/src/errors.ts` instead of hand-written replies.
+   - use `onRequest: app.authenticate` (auth runs before validation, so anonymous callers get 401, not 400) and read `request.user.sub` as the user id;
+   - throw `notFound()` / `unauthorized()` from `api/src/errors.ts` (repositories throw `ConflictError` → 409) instead of hand-written replies.
    - New resource file? Register it in `api/src/app.ts` with a prefix.
 4. **Integration test** — add cases to `api/test/<resource>.test.ts` using the helpers in `api/test/helpers.ts`
-   (`createTestApp`, `registerAndLogin`, `resetDb`). Cover at least:
+   (`createTestApp`, `registerUser`, `createAccountFor`, `createTransactionFor`, `resetDb`). Cover at least:
    - happy path (status + response body shape),
    - validation error (400),
    - unauthenticated (401),
