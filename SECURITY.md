@@ -3,8 +3,8 @@
 ## Reporting a vulnerability
 
 Please do **not** open a public issue for security problems. Use GitHub's
-[private vulnerability reporting](../../security/advisories/new) on this repository, or email
-raymondwongso.private@gmail.com. Include steps to reproduce and the affected version or commit.
+[private vulnerability reporting](../../security/advisories/new) on this repository. 
+Include steps to reproduce and the affected version or commit.
 Expect an acknowledgement within a few days.
 
 ## Scope and status
